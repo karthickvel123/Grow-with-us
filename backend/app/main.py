@@ -129,6 +129,16 @@ app.include_router(interview_router, prefix=settings.API_V1_STR)
 app.include_router(companies_router, prefix=settings.API_V1_STR)
 app.include_router(analytics_router, prefix=settings.API_V1_STR)
 
+@app.get("/")
+async def root():
+    return {
+        "service": settings.PROJECT_NAME,
+        "status": "online",
+        "version": "1.0.0",
+        "api_docs": "/docs",
+        "health": "/api/health"
+    }
+
 @app.get("/api/health")
 async def health_check():
     return {
@@ -137,3 +147,4 @@ async def health_check():
         "version": "1.0.0",
         "ai_engine": "Gemini 3.8 Flash (Active)" if settings.GEMINI_API_KEY else "Pedagogical Heuristic Engine (Active)"
     }
+
