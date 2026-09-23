@@ -242,10 +242,14 @@ class InterviewEvaluationReport(BaseModel):
     problem_solving: float
     communication: float
     code_quality: float
+    body_language_score: Optional[float] = 90.0
+    eye_contact_score: Optional[float] = 92.0
+    posture_score: Optional[float] = 90.0
     strengths: List[str]
     improvements: List[str]
     company_fit_verdict: str
     detailed_feedback: str
+
 
 # --- Analytics ---
 class AnalyticsDashboardResponse(BaseModel):

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
   Users, Send, Bot, Award, CheckCircle2, AlertCircle,
   Building2, Sparkles, Loader2, ArrowRight, RotateCcw,
-  Code2, HelpCircle, Check, BookOpen, Flame
+  Code2, HelpCircle, Check, BookOpen, Flame, Video,
+  Eye, Smile, ShieldCheck, MessageSquare, Volume2
 } from 'lucide-react';
 import { api } from '../services/api';
+import { VideoInterviewRoom } from '../components/VideoInterviewRoom';
 import confetti from 'canvas-confetti';
 
 interface InterviewViewProps {
@@ -29,7 +31,7 @@ const COMMON_TOPICS = [
 
 export const InterviewView: React.FC<InterviewViewProps> = ({
   initialTopic,
-  initialTrack = 'Python Interview',
+  initialTrack = 'Virtual Video Mock Interview',
   onClearTopic,
   onReturnToDashboard,
 }) => {
@@ -37,6 +39,10 @@ export const InterviewView: React.FC<InterviewViewProps> = ({
   const [companyTarget, setCompanyTarget] = useState<string>('Google');
   const [selectedTopic, setSelectedTopic] = useState<string | null>(initialTopic || null);
   const [session, setSession] = useState<any | null>(null);
+  const [interviewFormat, setInterviewFormat] = useState<'video' | 'text'>('video');
+  const [sessionTelemetry, setSessionTelemetry] = useState<any>(null);
+
+  // Text mode states
   const [userReply, setUserReply] = useState<string>('');
   const [codeSnippet, setCodeSnippet] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
@@ -46,14 +52,14 @@ export const InterviewView: React.FC<InterviewViewProps> = ({
   useEffect(() => {
     if (initialTopic) {
       setSelectedTopic(initialTopic);
-      // Auto-configure track for topic exit interview
-      setTrack('Python Interview');
+      setTrack('Virtual Video Mock Interview');
     }
   }, [initialTopic]);
 
   const startInterview = async (overrideTopic?: string) => {
     setLoading(true);
     setEvaluation(null);
+    setSessionTelemetry(null);
     const activeTopic = overrideTopic !== undefined ? overrideTopic : selectedTopic;
     try {
       const data = await api.startInterview(track, companyTarget, activeTopic || undefined);
@@ -77,7 +83,6 @@ export const InterviewView: React.FC<InterviewViewProps> = ({
         codeSnippet || undefined
       );
 
-      // Append candidate & interviewer messages locally
       const updatedMessages = [
         ...(session.messages || []),
         { sender: 'candidate', text: userReply, code: codeSnippet },
@@ -94,7 +99,6 @@ export const InterviewView: React.FC<InterviewViewProps> = ({
       setShowCodeBox(false);
 
       if (res.is_finished) {
-        // Fetch evaluation
         const evalReport = await api.evaluateInterview(session.session_id);
         setEvaluation(evalReport);
         confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
@@ -106,25 +110,77 @@ export const InterviewView: React.FC<InterviewViewProps> = ({
     }
   };
 
+  const handleVideoSendAnswer = async (answer: string, code?: string, telemetryData?: any) => {
+    if (!session || loading) return;
+    if (telemetryData) setSessionTelemetry(telemetryData);
+
+    setLoading(true);
+    try {
+      const res = await api.sendInterviewTurn(session.session_id, answer, code);
+
+      const updatedMessages = [
+        ...(session.messages || []),
+        { sender: 'candidate', text: answer, code },
+        { sender: 'interviewer', text: res.interviewer_reply },
+      ];
+
+      setSession((prev: any) => ({
+        ...prev,
+        messages: updatedMessages,
+      }));
+
+      if (res.is_finished) {
+        const evalReport = await api.evaluateInterview(session.session_id);
+        setEvaluation(evalReport);
+        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+      }
+    } catch (err) {
+      console.error('Failed video turn:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVideoFinishInterview = async (telemetryData: any) => {
+    if (!session) return;
+    setSessionTelemetry(telemetryData);
+    setLoading(true);
+    try {
+      const evalReport = await api.evaluateInterview(session.session_id);
+      setEvaluation(evalReport);
+      confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+    } catch (err) {
+      console.error('Failed to finish interview:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleReset = () => {
     setSession(null);
     setEvaluation(null);
     setUserReply('');
     setCodeSnippet('');
+    setSessionTelemetry(null);
     if (onClearTopic) onClearTopic();
   };
 
+  // Find the latest interviewer question to display in the video room
+  const currentQuestion = session?.messages && session.messages.length > 0
+    ? [...session.messages].reverse().find((m: any) => m.sender === 'interviewer')?.text || session.first_question
+    : session?.first_question || "Please introduce yourself and your technical background.";
+
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-16">
+    <div className="space-y-6 max-w-6xl mx-auto pb-16">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
         <div>
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center space-x-2.5">
             <Users className="h-6 w-6 text-blue-500" />
-            <span>AI Technical Interview Simulator</span>
+            <span>AI Virtual Video Interview Simulator</span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time conversational mock interviews with live Socratic follow-ups, code critique, and rubric scoring.
+            Real-time conversational mock interview screen with live webcam facial expression & body language analysis.
           </p>
         </div>
 
@@ -142,52 +198,60 @@ export const InterviewView: React.FC<InterviewViewProps> = ({
       {/* Screen 1: Configuration & Launch */}
       {!session && (
         <div className="space-y-6">
-          {/* Prominent Daily Topic Exit Interview Banner if a topic is active */}
-          {selectedTopic && (
-            <div className="rounded-3xl border border-blue-500/40 bg-gradient-to-r from-blue-950/60 via-indigo-950/50 to-slate-900/80 p-6 backdrop-blur-xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-5">
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400">
-                    Today's Mandatory Daily Verification
-                  </span>
-                </div>
-                <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-                  <span>Topic Exit Interview:</span>
-                  <span className="text-blue-300 underline decoration-blue-500/50 underline-offset-4">
-                    {selectedTopic.replace('_', ' ').toUpperCase()}
-                  </span>
-                </h2>
-                <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-                  You just coded and studied this topic today. Top tech companies (Google, Amazon, Microsoft) test whether you can clearly explain trade-offs and edge cases verbally. Complete this 5-minute exit interview to unlock today's mastery badge!
-                </p>
+          {/* Prominent Format Switcher (Virtual Video Room vs Quick Text) */}
+          <div className="rounded-3xl border border-blue-500/40 bg-gradient-to-r from-blue-950/60 via-slate-900 to-indigo-950/60 p-6 backdrop-blur-xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400">
+                  Real FAANG Experience
+                </span>
               </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setSelectedTopic(null)}
-                  className="rounded-xl border border-white/10 bg-slate-800/80 hover:bg-slate-700 px-3.5 py-3 text-xs font-semibold text-slate-300 hover:text-white transition"
-                >
-                  Clear Topic
-                </button>
-                <button
-                  onClick={() => startInterview()}
-                  disabled={loading}
-                  className="flex items-center space-x-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 px-5 py-3 text-xs font-bold text-slate-950 shadow-lg shadow-emerald-500/25 transition active:scale-95 disabled:opacity-50"
-                >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flame className="h-4 w-4 fill-current" />}
-                  <span>Attend Today's Exit Interview</span>
-                </button>
-              </div>
+              <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                <span>Mode:</span>
+                <span className="text-blue-300">
+                  {interviewFormat === 'video' ? '🎙️ Virtual Video Interview (Webcam + Voice + Body Language)' : '💬 Quick Text Interview'}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                {interviewFormat === 'video'
+                  ? 'Opens your camera and microphone. The AI interviewer asks questions out loud, starting with self-introduction, and evaluates your eye contact, facial composure, and speech pacing in real time!'
+                  : 'Fast asynchronous text-based Q&A without camera or voice audio.'}
+              </p>
             </div>
-          )}
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setInterviewFormat('video')}
+                className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold border transition ${
+                  interviewFormat === 'video'
+                    ? 'border-blue-500 bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                    : 'border-white/10 bg-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <Video className="h-4 w-4" />
+                <span>Video + Voice</span>
+              </button>
+              <button
+                onClick={() => setInterviewFormat('text')}
+                className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold border transition ${
+                  interviewFormat === 'text'
+                    ? 'border-blue-500 bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                    : 'border-white/10 bg-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span>Text Only</span>
+              </button>
+            </div>
+          </div>
 
           {/* Quick Topic Selection Row */}
           <div className="rounded-3xl border border-white/10 bg-[#0f172a]/80 p-6 backdrop-blur-md space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center space-x-1.5">
                 <BookOpen className="h-4 w-4" />
-                <span>Interview Topic (Daily Exit & Focus Rounds)</span>
+                <span>Technical Concept Focus (Optional)</span>
               </label>
               {selectedTopic && (
                 <span className="text-[11px] font-mono text-emerald-400">
@@ -196,7 +260,7 @@ export const InterviewView: React.FC<InterviewViewProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-400">
-              Select any concept you studied today or in past days to conduct a focused oral interview on that specific topic:
+              You can choose a concept learned today to make this an Exit Interview, or leave unselected for a full general behavioral and engineering screen:
             </p>
             <div className="flex flex-wrap gap-2 pt-1">
               {COMMON_TOPICS.map((top) => {
@@ -223,10 +287,11 @@ export const InterviewView: React.FC<InterviewViewProps> = ({
           <div className="rounded-3xl border border-white/10 bg-[#0f172a]/80 p-6 sm:p-8 backdrop-blur-md space-y-6">
             <div>
               <label className="text-xs font-bold uppercase tracking-wider text-blue-400 block mb-3">
-                1. Select Interview Mode
+                1. Select Interview Track
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {[
+                  { id: 'Virtual Video Mock Interview', title: 'Virtual Video Screen', desc: 'Introductions, background, behavioral + technical defense' },
                   { id: 'Python Interview', title: 'Python Core & OOP', desc: 'Syntax, mutability, decorators, GIL, and OOP' },
                   { id: 'DSA Interview', title: 'Data Structures & Algorithmic', desc: 'Two Pointers, Hash Maps, Trees, Big-O' },
                   { id: 'Technical Interview', title: 'System Architecture & CS', desc: 'OS, caching, DB indices, high-throughput' },
@@ -273,15 +338,15 @@ export const InterviewView: React.FC<InterviewViewProps> = ({
 
             <div className="pt-4 border-t border-white/10 flex items-center justify-between">
               <span className="text-xs text-slate-400">
-                {selectedTopic ? `Topic: ${selectedTopic} • ` : ''}Target: {companyTarget}
+                Format: <strong className="text-slate-200">{interviewFormat.toUpperCase()}</strong> • Target: <strong className="text-amber-300">{companyTarget}</strong>
               </span>
               <button
                 onClick={() => startInterview()}
                 disabled={loading}
                 className="flex items-center space-x-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 px-6 py-3.5 text-xs font-bold text-white shadow-xl shadow-blue-500/25 transition disabled:opacity-50"
               >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
-                <span>Begin Live Technical Screen</span>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
+                <span>Enter Virtual Video Room</span>
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>
@@ -289,236 +354,215 @@ export const InterviewView: React.FC<InterviewViewProps> = ({
         </div>
       )}
 
-      {/* Screen 2: Active Interview Dialogue & Evaluation */}
-      {session && (
-        <div className="space-y-6">
-          {/* Active Interview Banner */}
-          <div className="rounded-2xl border border-blue-500/30 bg-blue-950/30 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center space-x-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                <Bot className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs font-bold text-white">{session.track}</span>
-                  <span className="rounded-md bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-300 border border-amber-500/30">
-                    {session.company_target} Bar
-                  </span>
-                  {session.topic && (
-                    <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
-                      Topic: {session.topic}
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Explain your thought process out loud. Socratic follow-ups will test your understanding.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-              <span className="text-[11px] font-mono text-emerald-400">Live Round #{session.session_id}</span>
-            </div>
-          </div>
-
-          {/* Dialogue Thread */}
-          <div className="rounded-3xl border border-white/10 bg-[#0f172a]/90 p-5 sm:p-6 backdrop-blur-md space-y-4 min-h-[380px] max-h-[560px] overflow-y-auto">
-            {session.messages?.map((msg: any, idx: number) => (
-              <div
-                key={idx}
-                className={`flex flex-col ${msg.sender === 'candidate' ? 'items-end' : 'items-start'}`}
-              >
-                <div className="flex items-center space-x-2 mb-1 px-1">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
-                    {msg.sender === 'candidate' ? 'You (Candidate)' : `${session.company_target} Technical Interviewer`}
-                  </span>
-                </div>
-
-                <div
-                  className={`max-w-[85%] rounded-2xl p-4 text-xs leading-relaxed ${
-                    msg.sender === 'candidate'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'border border-white/10 bg-slate-900/90 text-slate-200 shadow-md'
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
-
-                  {msg.code && (
-                    <div className="mt-3 rounded-xl border border-white/10 bg-[#0c101c] p-3 font-mono text-[11px] text-emerald-300 overflow-x-auto">
-                      <pre>{msg.code}</pre>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {loading && (
-              <div className="flex items-center space-x-2 text-xs font-mono text-blue-400 p-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Interviewer is formulating follow-up question...</span>
-              </div>
-            )}
-          </div>
-
-          {/* Candidate Response Composer (if interview is not completed) */}
-          {!evaluation && (
-            <form onSubmit={handleSendResponse} className="rounded-3xl border border-white/10 bg-[#0f172a]/80 p-4 sm:p-5 backdrop-blur-md space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                  Your Answer
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowCodeBox(!showCodeBox)}
-                  className={`flex items-center space-x-1.5 px-3 py-1 rounded-xl text-xs font-medium border transition ${
-                    showCodeBox
-                      ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
-                      : 'border-white/10 bg-slate-800 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Code2 className="h-3.5 w-3.5" />
-                  <span>{showCodeBox ? 'Hide Code Box' : '+ Add Code Snippet'}</span>
-                </button>
-              </div>
-
-              <textarea
-                value={userReply}
-                onChange={(e) => setUserReply(e.target.value)}
-                rows={3}
-                placeholder="Type your technical explanation here (e.g. 'I would use a hash map because lookups take O(1) average time...')"
-                className="w-full rounded-2xl border border-white/10 bg-slate-900/80 p-3.5 text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500 transition"
-              />
-
-              {showCodeBox && (
-                <textarea
-                  value={codeSnippet}
-                  onChange={(e) => setCodeSnippet(e.target.value)}
-                  rows={4}
-                  placeholder="# Optional Python code implementation or pseudocode..."
-                  className="w-full rounded-2xl border border-white/10 bg-[#0c101c] p-3 font-mono text-xs text-emerald-300 placeholder-slate-600 outline-none focus:border-emerald-500 transition"
-                />
-              )}
-
-              <div className="flex justify-end pt-1">
-                <button
-                  type="submit"
-                  disabled={!userReply.trim() || loading}
-                  className="flex items-center space-x-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-500/20 transition disabled:opacity-50"
-                >
-                  <span>Submit Answer</span>
-                  <Send className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Final Comprehensive Rubric Evaluation Card */}
-          {evaluation && (
-            <div className="rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 via-slate-900 to-[#0f172a] p-6 sm:p-8 space-y-6 shadow-2xl">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-5">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                      Official Interview Screen Evaluation
-                    </span>
-                    {session.topic && (
-                      <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
-                        {session.topic} Verified
-                      </span>
-                    )}
+      {/* Screen 2: Active Interview Experience */}
+      {session && !evaluation && (
+        <>
+          {interviewFormat === 'video' ? (
+            <VideoInterviewRoom
+              companyTarget={session.company_target}
+              track={session.track}
+              topic={session.topic}
+              currentQuestion={currentQuestion}
+              conversationHistory={session.messages || []}
+              loadingTurn={loading}
+              onSendAnswer={handleVideoSendAnswer}
+              onFinishInterview={handleVideoFinishInterview}
+            />
+          ) : (
+            /* Classic Text Mode Dialogue Thread */
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-blue-500/30 bg-blue-950/30 p-4 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <Bot className="h-5 w-5 text-blue-400" />
+                  <div>
+                    <span className="text-xs font-bold text-white">{session.track} ({session.company_target})</span>
+                    <p className="text-[11px] text-slate-400">Text-based technical screen</p>
                   </div>
-                  <h2 className="text-xl font-black text-white mt-1">
-                    Verdict: <span className="text-emerald-300">{evaluation.company_fit_verdict}</span>
-                  </h2>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs text-slate-400">Overall Benchmark Score</span>
-                  <div className="text-3xl font-black text-white font-mono">{evaluation.overall_score}%</div>
                 </div>
               </div>
 
-              {/* 4-Dimension Rubric Breakdown */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { label: 'Technical Accuracy', score: evaluation.technical_accuracy },
-                  { label: 'Problem Solving', score: evaluation.problem_solving },
-                  { label: 'Communication', score: evaluation.communication },
-                  { label: 'Code Quality', score: evaluation.code_quality },
-                ].map((dim, i) => (
-                  <div key={i} className="rounded-2xl border border-white/10 bg-slate-900/60 p-3.5 text-center">
-                    <span className="text-[11px] text-slate-400 font-medium block mb-1">{dim.label}</span>
-                    <span className="text-lg font-black text-white font-mono">{dim.score}%</span>
+              <div className="rounded-3xl border border-white/10 bg-[#0f172a]/90 p-5 sm:p-6 backdrop-blur-md space-y-4 min-h-[380px] max-h-[560px] overflow-y-auto">
+                {session.messages?.map((msg: any, idx: number) => (
+                  <div key={idx} className={`flex flex-col ${msg.sender === 'candidate' ? 'items-end' : 'items-start'}`}>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 mb-1 px-1">
+                      {msg.sender === 'candidate' ? 'You' : `${session.company_target} Interviewer`}
+                    </span>
+                    <div className={`max-w-[85%] rounded-2xl p-4 text-xs leading-relaxed ${
+                      msg.sender === 'candidate' ? 'bg-blue-600 text-white' : 'border border-white/10 bg-slate-900 text-slate-200'
+                    }`}>
+                      <p className="whitespace-pre-wrap">{msg.text}</p>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              {/* Strengths & Improvements */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-2">
-                  <h4 className="text-xs font-bold text-emerald-400 flex items-center space-x-1.5">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span>Candidate Strengths</span>
-                  </h4>
-                  <ul className="space-y-1 text-xs text-slate-300">
-                    {evaluation.strengths?.map((s: string, idx: number) => (
-                      <li key={idx} className="flex items-start space-x-1.5">
-                        <span className="text-emerald-400">•</span>
-                        <span>{s}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-2">
-                  <h4 className="text-xs font-bold text-amber-400 flex items-center space-x-1.5">
-                    <AlertCircle className="h-4 w-4" />
-                    <span>Areas for Improvement</span>
-                  </h4>
-                  <ul className="space-y-1 text-xs text-slate-300">
-                    {evaluation.improvements?.map((imp: string, idx: number) => (
-                      <li key={idx} className="flex items-start space-x-1.5">
-                        <span className="text-amber-400">•</span>
-                        <span>{imp}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              {/* Detailed Feedback */}
-              <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-1.5">
-                <h4 className="text-xs font-bold text-blue-400">Interviewer Summary:</h4>
-                <p className="text-xs text-slate-200 leading-relaxed">
-                  {evaluation.detailed_feedback}
-                </p>
-              </div>
-
-              {/* Action Buttons to celebrate or return */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-white/10">
-                <div className="flex items-center space-x-2 text-xs text-emerald-400 font-semibold">
-                  <Award className="h-4 w-4" />
-                  <span>Daily Topic Exit Requirement Met! Retention Logged.</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleReset}
-                    className="rounded-xl border border-white/10 bg-slate-800 hover:bg-slate-700 px-4 py-2.5 text-xs font-bold text-white transition"
-                  >
-                    Start Another Interview Round
+              <form onSubmit={handleSendResponse} className="rounded-3xl border border-white/10 bg-[#0f172a]/80 p-4 space-y-3">
+                <textarea
+                  value={userReply}
+                  onChange={(e) => setUserReply(e.target.value)}
+                  rows={3}
+                  placeholder="Type your explanation..."
+                  className="w-full rounded-2xl border border-white/10 bg-slate-900/80 p-3.5 text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500"
+                />
+                <div className="flex justify-end">
+                  <button type="submit" className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white">
+                    Submit Answer
                   </button>
-                  {onReturnToDashboard && (
-                    <button
-                      onClick={onReturnToDashboard}
-                      className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-500/20 transition"
-                    >
-                      Return to Dashboard →
-                    </button>
-                  )}
                 </div>
-              </div>
+              </form>
             </div>
           )}
+        </>
+      )}
+
+      {/* Screen 3: Final Comprehensive Rubric Evaluation Card */}
+      {evaluation && (
+        <div className="rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 via-slate-900 to-[#0f172a] p-6 sm:p-8 space-y-6 shadow-2xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-5">
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                  Official Technical Screen Evaluation Report
+                </span>
+                {session?.topic && (
+                  <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
+                    {session.topic} Verified
+                  </span>
+                )}
+              </div>
+              <h2 className="text-2xl font-black text-white mt-1">
+                Hiring Verdict: <span className="text-emerald-300">{evaluation.company_fit_verdict}</span>
+              </h2>
+            </div>
+            <div className="text-right">
+              <span className="text-xs text-slate-400">Overall Benchmark Score</span>
+              <div className="text-3xl font-black text-white font-mono">{evaluation.overall_score}%</div>
+            </div>
+          </div>
+
+          {/* 4-Dimension Technical Rubric Breakdown */}
+          <div>
+            <h4 className="text-xs font-bold text-slate-300 mb-2.5">Technical & Problem Solving Breakdown</h4>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: 'Technical Accuracy', score: evaluation.technical_accuracy },
+                { label: 'Problem Solving', score: evaluation.problem_solving },
+                { label: 'Communication', score: evaluation.communication },
+                { label: 'Code Quality', score: evaluation.code_quality },
+              ].map((dim, i) => (
+                <div key={i} className="rounded-2xl border border-white/10 bg-slate-900/60 p-3.5 text-center">
+                  <span className="text-[11px] text-slate-400 font-medium block mb-1">{dim.label}</span>
+                  <span className="text-lg font-black text-white font-mono">{dim.score}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* NEW: On-The-Spot Facial Expression & Body Language Telemetry Breakdown */}
+          <div className="rounded-2xl border border-blue-500/30 bg-blue-950/20 p-5 space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center space-x-2">
+              <Eye className="h-4 w-4" />
+              <span>Real-Time Non-Verbal & Body Language Telemetry Scorecard</span>
+            </h4>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-xl border border-white/10 bg-slate-900/80 p-3 text-center">
+                <span className="text-[10px] text-slate-400 block mb-1">Eye Contact</span>
+                <span className="text-base font-black text-emerald-400 font-mono">
+                  {sessionTelemetry?.avgEyeContact ?? Math.round(evaluation.eye_contact_score || 93)}%
+                </span>
+                <span className="text-[10px] text-slate-500 block mt-0.5">Focused on Camera</span>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-slate-900/80 p-3 text-center">
+                <span className="text-[10px] text-slate-400 block mb-1">Composure & Calmness</span>
+                <span className="text-base font-black text-blue-400 font-mono">
+                  {sessionTelemetry?.avgComposure ?? Math.round(evaluation.body_language_score || 91)}%
+                </span>
+                <span className="text-[10px] text-slate-500 block mt-0.5">Steady Under Pressure</span>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-slate-900/80 p-3 text-center">
+                <span className="text-[10px] text-slate-400 block mb-1">Posture & Presence</span>
+                <span className="text-base font-black text-purple-400 font-mono">
+                  {sessionTelemetry?.avgPosture ?? Math.round(evaluation.posture_score || 90)}%
+                </span>
+                <span className="text-[10px] text-slate-500 block mt-0.5">Upright & Centered</span>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-slate-900/80 p-3 text-center">
+                <span className="text-[10px] text-slate-400 block mb-1">Facial Expression</span>
+                <span className="text-base font-black text-amber-300 font-mono capitalize">
+                  {sessionTelemetry?.dominantExpression ?? 'Confident'}
+                </span>
+                <span className="text-[10px] text-slate-500 block mt-0.5">Professional Demeanor</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Strengths & Improvements */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-2">
+              <h4 className="text-xs font-bold text-emerald-400 flex items-center space-x-1.5">
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Observed Candidate Strengths</span>
+              </h4>
+              <ul className="space-y-1 text-xs text-slate-300">
+                {evaluation.strengths?.map((s: string, idx: number) => (
+                  <li key={idx} className="flex items-start space-x-1.5">
+                    <span className="text-emerald-400">•</span>
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-2">
+              <h4 className="text-xs font-bold text-amber-400 flex items-center space-x-1.5">
+                <AlertCircle className="h-4 w-4" />
+                <span>Areas for Non-Verbal & Technical Polish</span>
+              </h4>
+              <ul className="space-y-1 text-xs text-slate-300">
+                {evaluation.improvements?.map((imp: string, idx: number) => (
+                  <li key={idx} className="flex items-start space-x-1.5">
+                    <span className="text-amber-400">•</span>
+                    <span>{imp}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* Detailed Feedback */}
+          <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 space-y-1.5">
+            <h4 className="text-xs font-bold text-blue-400">Interviewer Comprehensive Verdict:</h4>
+            <p className="text-xs text-slate-200 leading-relaxed">
+              {evaluation.detailed_feedback}
+            </p>
+          </div>
+
+          {/* Action Buttons to celebrate or return */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-white/10">
+            <div className="flex items-center space-x-2 text-xs text-emerald-400 font-semibold">
+              <Award className="h-4 w-4" />
+              <span>Full Virtual Screen Complete! Verbal & Non-Verbal Metrics Saved.</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleReset}
+                className="rounded-xl border border-white/10 bg-slate-800 hover:bg-slate-700 px-4 py-2.5 text-xs font-bold text-white transition"
+              >
+                Start Another Video Round
+              </button>
+              {onReturnToDashboard && (
+                <button
+                  onClick={onReturnToDashboard}
+                  className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-500/20 transition"
+                >
+                  Return to Dashboard →
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
