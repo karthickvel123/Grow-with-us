@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/.venv/
+.venv/
+env/
+venv/
+ENV/
+*.egg-info/
+.pytest_cache/
+
+# Node & Frontend
+frontend/node_modules/
+node_modules/
+frontend/dist/
+dist/
+dist-ssr/
+*.local
+
+# Environment variables & secrets
+.env
+backend/.env
+frontend/.env
+*.env.local
+
+# Databases & logs
+*.db
+*.sqlite
+*.sqlite3
+backend/data/*.db
+logs/
+*.log
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

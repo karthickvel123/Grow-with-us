@@ -1,0 +1,9 @@
+{
+  "appId": "com.codepath.ai",
+  "appName": "CodePath AI",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
